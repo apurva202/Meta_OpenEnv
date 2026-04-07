@@ -30,21 +30,18 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
 # ---------------------------------------------------------------------------
-# Path bootstrap – allows the package to be found whether the container
-# runs with PYTHONPATH=/app or the file lives alongside the package.
+# Path bootstrap - allow imports from src/envs
 # ---------------------------------------------------------------------------
 import sys
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
-# /app is injected by the Dockerfile; fallback to local dev layout transparently
-for _candidate in (_HERE, os.path.join(_HERE, "..", "..", "..", "..")):
-    _candidate = os.path.abspath(_candidate)
-    if _candidate not in sys.path:
-        sys.path.insert(0, _candidate)
+# Add src and src/envs to PYTHONPATH so it finds assignment_planner natively
+sys.path.insert(0, os.path.abspath(os.path.join(_HERE, "..", "src")))
+sys.path.insert(0, os.path.abspath(os.path.join(_HERE, "..", "src", "envs")))
 
-from assignment_planner import AssignmentPlannerEnv  # noqa: E402  (Docker layout)
-from assignment_planner.models import Action, Observation, State  # noqa: E402
-from assignment_planner.task_config import list_task_ids  # noqa: E402
+from assignment_planner.environment import AssignmentPlannerEnv
+from assignment_planner.models import Action, Observation, State
+from assignment_planner.task_config import list_task_ids
 
 # ---------------------------------------------------------------------------
 # Logging
@@ -320,16 +317,12 @@ async def key_error_handler(request, exc: KeyError):
 
 
 # ---------------------------------------------------------------------------
-# Dev entry-point (for local testing without Docker)
+# Dev entry-point
 # ---------------------------------------------------------------------------
 
-if __name__ == "__main__":
+def main():
     import uvicorn
+    uvicorn.run("server.app:app", host="0.0.0.0", port=PORT)
 
-    uvicorn.run(
-        "app:app",
-        host="0.0.0.0",
-        port=PORT,
-        reload=False,
-        log_level="info",
-    )
+if __name__ == "__main__":
+    main()

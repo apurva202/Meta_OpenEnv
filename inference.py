@@ -70,7 +70,7 @@ if _REPO_ROOT not in sys.path:
 from src.envs.assignment_planner.environment import AssignmentPlannerEnv
 from src.envs.assignment_planner.graders import grade
 from src.envs.assignment_planner.models import Action, Observation, State
-from src.envs.assignment_planner.task_config import TASK_CONFIGS, list_task_ids
+from src.envs.assignment_planner.task_config import TASK_CONFIGS, list_task_ids, sample_tasks
 
 # ---------------------------------------------------------------------------
 # Logging (structured, prints to stdout for clean HF log capture)
@@ -78,16 +78,23 @@ from src.envs.assignment_planner.task_config import TASK_CONFIGS, list_task_ids
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(message)s",
-    stream=sys.stdout,
+    stream=sys.stderr,
 )
 logger = logging.getLogger("inference")
 
 # ---------------------------------------------------------------------------
 # Configuration (from environment variables)
 # ---------------------------------------------------------------------------
-API_BASE_URL: str = os.getenv("API_BASE_URL", "http://localhost:7860").rstrip("/")
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    pass
+
+API_BASE_URL: str = os.getenv("API_BASE_URL", "http://apurva-22-meta-openenv.hf.space").rstrip("/")
+LLM_BASE_URL: str = os.getenv("LLM_BASE_URL", "https://router.huggingface.co/hf-inference/v1")
 MODEL_NAME: str = os.getenv("MODEL_NAME", "meta-llama/Llama-3.1-8B-Instruct")
-HF_TOKEN: str = os.getenv("HF_TOKEN", "")
+HF_TOKEN: str = os.getenv("HF_TOKEN")
 USE_LOCAL_ENV: bool = os.getenv("USE_LOCAL_ENV", "0") == "1"
 
 # LLM call settings
@@ -220,8 +227,7 @@ def _build_client():
         logger.warning("HF_TOKEN is not set. Falling back to heuristic agent.")
         return None
 
-    return OpenAI(base_url=API_BASE_URL if not USE_LOCAL_ENV else None,
-                  api_key=HF_TOKEN)
+    return OpenAI(base_url=LLM_BASE_URL, api_key=HF_TOKEN)
 
 
 def _build_llm_prompt(task_id: str, obs: Observation) -> str:
@@ -429,6 +435,7 @@ def log_start(task_id: str, env_url: str, model: str) -> None:
 
 
 def log_step(
+    task_id: str,
     step_num: int,
     action: Action,
     reward: float,
@@ -442,9 +449,9 @@ def log_step(
         separators=(",", ":"),
     )
     print(
-        f"[STEP] step={step_num} "
-        f"reward={round(reward, 4)} "
+        f"[STEP] task={task_id} step={step_num} "
         f"action={action_json} "
+        f"reward={round(reward, 4)} "
         f"done={done} "
         f"info={info_json}",
         flush=True,
@@ -492,7 +499,7 @@ def run_episode_local(
         trajectory.append(env.state())
 
         step_num += 1
-        log_step(step_num, action, reward, done, info)
+        log_step(task_id, step_num, action, reward, done, info)
 
     score = grade(task_id, trajectory)
     log_end(task_id, score, step_num)
@@ -556,7 +563,7 @@ def run_episode_http(
         trajectory.append(shadow_env.state())
 
         step_num += 1
-        log_step(step_num, action, reward, done, info)
+        log_step(task_id, step_num, action, reward, done, info)
 
     score = grade(task_id, trajectory)
     log_end(task_id, score, step_num)
@@ -588,10 +595,29 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--tasks",
         nargs="+",
-        default=list_task_ids(),
+        default=None,
         choices=list_task_ids(),
         metavar="TASK_ID",
-        help=f"Task IDs to run (default: all). Choices: {list_task_ids()}",
+        help=f"Explicit task IDs to run. Choices: {list_task_ids()}",
+    )
+    parser.add_argument(
+        "--random",
+        type=int,
+        default=0,
+        metavar="N",
+        help=(
+            "Pick N random tasks from each difficulty section (easy/medium/hard). "
+            "E.g. --random 1 picks 1 easy + 1 medium + 1 hard = 3 tasks total. "
+            "--random 5 picks 5 from each section = 15 tasks total. "
+            "Ignored if --tasks is also specified."
+        ),
+    )
+    parser.add_argument(
+        "--seed",
+        type=int,
+        default=None,
+        metavar="SEED",
+        help="Random seed for --random sampling (omit for a different set each run).",
     )
     return parser.parse_args()
 
@@ -601,13 +627,24 @@ def main() -> None:
     use_llm = not args.no_llm
     use_local = args.local
 
+    # ── Resolve task list ────────────────────────────────────────────────────
+    if args.tasks is not None:
+        # User explicitly named tasks → use those
+        tasks_to_run = args.tasks
+    elif args.random and args.random > 0:
+        # Random sampling mode: pick N from each difficulty section
+        tasks_to_run = sample_tasks(n=args.random, seed=args.seed)
+    else:
+        # Default: run the canonical 3 tasks (easy_1, medium_1, hard_1)
+        tasks_to_run = ["easy_1", "medium_1", "hard_1"]
+
     logger.info("=" * 60)
     logger.info("Assignment & Bug-Fix Planner Agent – Baseline Inference")
     logger.info("=" * 60)
     logger.info("Mode       : %s", "local env" if use_local else "HTTP server")
     logger.info("LLM        : %s", MODEL_NAME if use_llm else "heuristic (no LLM)")
     logger.info("Server URL : %s", API_BASE_URL)
-    logger.info("Tasks      : %s", args.tasks)
+    logger.info("Tasks      : %s", tasks_to_run)
     logger.info("=" * 60)
 
     # Build LLM client (None if unavailable)
@@ -619,7 +656,7 @@ def main() -> None:
     all_scores: Dict[str, float] = {}
     total_start = time.time()
 
-    for task_id in args.tasks:
+    for task_id in tasks_to_run:
         logger.info("Running task: %s", task_id)
         t0 = time.time()
 

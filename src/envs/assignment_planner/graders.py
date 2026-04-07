@@ -349,11 +349,26 @@ def grade_hard(trajectory: Trajectory) -> float:
 # Convenience dispatcher
 # ---------------------------------------------------------------------------
 
-GRADER_MAP = {
-    "easy_1":   grade_easy,
-    "medium_1": grade_medium,
-    "hard_1":   grade_hard,
-}
+# Built dynamically: any task_id whose prefix matches easy/medium/hard is
+# automatically registered with the correct grader.  This means adding new
+# variants to task_config.py (easy_2, hard_5, …) requires NO changes here.
+from .task_config import list_task_ids as _list_task_ids
+
+def _build_grader_map():
+    _prefix_map = {
+        "easy":   grade_easy,
+        "medium": grade_medium,
+        "hard":   grade_hard,
+    }
+    result = {}
+    for tid in _list_task_ids():
+        for prefix, fn in _prefix_map.items():
+            if tid.startswith(prefix):
+                result[tid] = fn
+                break
+    return result
+
+GRADER_MAP = _build_grader_map()
 
 
 def grade(task_id: str, trajectory: Trajectory) -> float:
