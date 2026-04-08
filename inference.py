@@ -38,10 +38,11 @@ from src.envs.assignment_planner.task_config import TASK_CONFIGS, list_task_ids,
 # ---------------------------------------------------------------------------
 # Configuration
 # ---------------------------------------------------------------------------
-API_BASE_URL: str = os.getenv("API_BASE_URL", "https://apurva-22-meta-openenv.hf.space").rstrip("/")
-LLM_BASE_URL: str = os.getenv("LLM_BASE_URL", "https://router.huggingface.co/hf-inference/v1")
+# API_BASE_URL is the LLM proxy URL injected by the platform
+API_BASE_URL: str = os.getenv("API_BASE_URL", "https://router.huggingface.co/hf-inference/v1").rstrip("/")
 MODEL_NAME: str = os.getenv("MODEL_NAME", "meta-llama/Llama-3.1-8B-Instruct")
-HF_TOKEN: str = os.getenv("HF_TOKEN")
+# Platform injects API_KEY; fall back to HF_TOKEN for local testing
+API_KEY: str = os.getenv("API_KEY") or os.getenv("HF_TOKEN")
 USE_LOCAL_ENV: bool = os.getenv("USE_LOCAL_ENV", "0") == "1"
 
 MAX_RETRIES: int = 3
@@ -81,11 +82,16 @@ def observation_from_dict(d: Dict) -> Observation:
     return Observation(**d)
 
 def _build_client():
+    """Build OpenAI client using platform-injected API_BASE_URL and API_KEY."""
     try:
         from openai import OpenAI
-        if not HF_TOKEN: return None
-        return OpenAI(base_url=LLM_BASE_URL, api_key=HF_TOKEN)
+        if not API_KEY:
+            logger.warning("No API_KEY or HF_TOKEN found. Falling back to heuristic agent.")
+            return None
+        logger.info("LLM client initialized: %s", API_BASE_URL)
+        return OpenAI(base_url=API_BASE_URL, api_key=API_KEY)
     except ImportError:
+        logger.warning("openai package not installed. Falling back to heuristic agent.")
         return None
 
 def _heuristic_action(obs: Observation) -> Action:
