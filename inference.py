@@ -162,17 +162,25 @@ def get_action(client, task_id: str, obs: Observation, use_llm: bool = True) -> 
 # STRUCTURED LOGGING (The Fix for Phase 2)
 # ===========================================================================
 
+def _clamp_score(val: float) -> float:
+    """Ensure score is strictly within (0, 1) as required by platform."""
+    epsilon = 0.01
+    return max(epsilon, min(1.0 - epsilon, val))
+
 def log_start(task: str, env: str, model: str) -> None:
     print(f"[START] task={task} env={env} model={model}", flush=True)
 
 def log_step(step: int, action: str, reward: float, done: bool, error: Optional[str] = None) -> None:
     error_val = error if error else "null"
     done_val = str(done).lower()
-    print(f"[STEP] step={step} action={action} reward={reward:.2f} done={done_val} error={error_val}", flush=True)
+    clamped_reward = _clamp_score(reward)
+    print(f"[STEP] step={step} action={action} reward={clamped_reward:.2f} done={done_val} error={error_val}", flush=True)
 
 def log_end(success: bool, steps: int, score: float, rewards: List[float]) -> None:
-    rewards_str = ",".join(f"{r:.2f}" for r in rewards)
-    print(f"[END] success={str(success).lower()} steps={steps} score={score:.3f} rewards={rewards_str}", flush=True)
+    clamped_score = _clamp_score(score)
+    clamped_rewards = [_clamp_score(r) for r in rewards]
+    rewards_str = ",".join(f"{r:.2f}" for r in clamped_rewards)
+    print(f"[END] success={str(success).lower()} steps={steps} score={clamped_score:.3f} rewards={rewards_str}", flush=True)
 
 # ===========================================================================
 # Episode runners
