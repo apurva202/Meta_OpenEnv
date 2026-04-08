@@ -38,12 +38,13 @@ from src.envs.assignment_planner.task_config import TASK_CONFIGS, list_task_ids,
 # ---------------------------------------------------------------------------
 # Configuration
 # ---------------------------------------------------------------------------
-# API_BASE_URL is the LLM proxy URL injected by the platform
+# API_BASE_URL is strictly the LLM proxy URL injected by the platform
 API_BASE_URL: str = os.getenv("API_BASE_URL", "https://router.huggingface.co/hf-inference/v1").rstrip("/")
 MODEL_NAME: str = os.getenv("MODEL_NAME", "meta-llama/Llama-3.1-8B-Instruct")
 # Platform injects API_KEY; fall back to HF_TOKEN for local testing
 API_KEY: str = os.getenv("API_KEY") or os.getenv("HF_TOKEN")
-USE_LOCAL_ENV: bool = os.getenv("USE_LOCAL_ENV", "0") == "1"
+# For Phase 2 evaluation, we should use the local environment class directly
+USE_LOCAL_ENV: bool = os.getenv("USE_LOCAL_ENV", "1") == "1"
 
 MAX_RETRIES: int = 3
 RETRY_DELAY: float = 1.0
@@ -178,8 +179,9 @@ def log_end(success: bool, steps: int, score: float, rewards: List[float]) -> No
 # ===========================================================================
 
 def run_episode(task_id: str, client, use_llm: bool, use_local: bool) -> float:
-    env_url = "local" if use_local else API_BASE_URL
-    log_start(task_id, env_url, MODEL_NAME)
+    # On the platform, API_BASE_URL is for the LLM, so don't log it as the environment URL
+    env_display = "local" if use_local else "remote"
+    log_start(task_id, env_display, MODEL_NAME)
     
     if use_local:
         env = AssignmentPlannerEnv(task_id=task_id)
