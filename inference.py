@@ -40,7 +40,7 @@ from src.envs.assignment_planner.task_config import TASK_CONFIGS, list_task_ids,
 # ---------------------------------------------------------------------------
 # API_BASE_URL is strictly the LLM proxy URL injected by the platform
 API_BASE_URL: str = os.getenv("API_BASE_URL", "https://router.huggingface.co/hf-inference/v1").rstrip("/")
-MODEL_NAME: str = os.getenv("MODEL_NAME", "meta-llama/Llama-3.1-8B-Instruct")
+MODEL_NAME: str = os.getenv("MODEL_NAME", "Qwen/Qwen2.5-72B-Instruct")
 # Platform injects API_KEY; fall back to HF_TOKEN for local testing
 API_KEY: str = os.getenv("API_KEY") or os.getenv("HF_TOKEN")
 # For Phase 2 evaluation, we should use the local environment class directly
