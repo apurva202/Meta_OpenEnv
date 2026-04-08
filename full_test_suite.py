@@ -464,22 +464,25 @@ for line in end_lines:
     except Exception as ex:
         fail(f"Could not parse [END] line: {line!r}", ex)
 
-# Validate [STEP] lines parse correctly (space-separated)
+# Validate [STEP] lines parse correctly (regex-based extract)
+import re
 for line in step_lines[:3]:
     try:
-        # Expected: [STEP] step=1 action={...} reward=0.50 done=false error=null
+        # Expected: [STEP] step=1 action=work(task=0, hours=2.0) reward=0.50 done=false error=null
         content = line[len("[STEP] "):].strip()
-        parts_list = content.split(" ")
-        parts = {}
-        for p in parts_list:
-            if "=" in p:
-                k, v = p.split("=", 1)
-                parts[k] = v
+        
+        # Robust regex: handles values with spaces like work(task=0, hours=2.0) or JSON
+        pattern = r'(\w+)=((?:work\(.*?\))|(?:\{.*?\})|(?:[^\s]+))'
+        matches = re.findall(pattern, content)
+        parts = dict(matches)
         
         _ = int(parts["step"])
         _ = float(parts["reward"])
         _ = parts["done"] in ("true", "false")
-        _ = json.loads(parts["action"])
+        
+        # Verify action contains the work() call as expected by Phase 4 validator logic
+        expect_true("work(" in parts["action"], f"action format is correct: {parts['action']}")
+        
         expect_equal(parts["error"], "null", "error is null")
         ok(f"[STEP] line parses OK: step={parts['step']}")
     except Exception as ex:
